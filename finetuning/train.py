@@ -2,6 +2,7 @@
 from transformers import AutoTokenizer, PreTrainedTokenizer, PreTrainedTokenizerFast, LlavaForConditionalGeneration
 from dataclasses import dataclass
 import logging
+import os
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -29,6 +30,7 @@ from torch.utils.data.distributed import DistributedSampler
 import itertools
 from peft import LoraConfig, get_peft_model, TaskType
 import json
+from time import sleep
 
 
 DTYPE_MAP = { 'float16': torch.float16, 'float32': torch.float32, 'bfloat16': torch.bfloat16 }
@@ -38,7 +40,7 @@ DTYPE_MAP = { 'float16': torch.float16, 'float32': torch.float32, 'bfloat16': to
 class Config:
 	output_dir: Path = Path("checkpoints")               # Output directory
 	wandb_project: Optional[str] = None                  # Wandb project
-	device_batch_size: int = 1                           # Device batch size
+	device_batch_size: int = 8                           # Device batch size
 	batch_size: int = 32                                 # Actual batch size; gradient accumulation is used on device_batch_size to achieve this
 	learning_rate: float = 5e-5                          # Learning rate
 
@@ -64,7 +66,7 @@ class Config:
 	dataset: str = "your_dataset.json"                   # Dataset path (parquet)
 	images_path: Path = Path("../data/resized-384-squish")   # Images path
 	finetune: str = "fancyfeast/llama-joycaption-alpha-two-hf-llava"   # Model to finetune from
-	gradient_checkpointing: bool = True                  # Use gradient checkpointing
+	gradient_checkpointing: bool = False                  # Use gradient checkpointing
 	test_size: int = 128                                 # Test size
 	grad_scaler_init: float = 2**16                      # Initial grad scaler
 
@@ -659,3 +661,22 @@ if __name__ == "__main__":
 	torch.cuda.set_device(distributed_rank())
 	main()
 	distributed_cleanup()
+	
+	shutdown = True
+	shutdown_time = 120
+	if shutdown:
+		pod_id = os.environ.get("RUNPOD_POD_ID", None)
+		print(pod_id)
+		if pod_id is not None:
+			print(
+				f"Automatic shut down is configured. Shutting down in {shutdown_time} seconds! Hit Control-C to cancel."
+			)
+			try:
+				sleep(shutdown_time)
+				subprocess.run(f"runpodctl stop pod {pod_id}", shell=True, check=False)
+			except KeyboardInterrupt:
+				print("Automatic shut down cancelled.")
+		else:
+			print(
+				"Automatic shut down was configured, but could not get environment $RUNPOD_POD_ID"
+			)
