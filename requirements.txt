@@ -1,0 +1,5 @@
+transformers
+wandb
+tqdm
+peft
+omegaconf
